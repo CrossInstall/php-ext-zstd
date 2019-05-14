@@ -69,6 +69,48 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_uncompress_dict, 0, 0, 1)
     ZEND_ARG_INFO(0, dictBuffer)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_create_cctx, 0, 0, 1)
+    ZEND_ARG_INFO(0, cctx)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_create_dctx, 0, 0, 1)
+    ZEND_ARG_INFO(0, dctx)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_free_cctx, 0, 0, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_free_dctx, 0, 0, 1)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_create_cdict, 0, 0, 1)
+    ZEND_ARG_INFO(0, dictBuffer)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_create_ddict, 0, 0, 1)
+    ZEND_ARG_INFO(0, dictBuffer)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_free_cdict, 0, 0, 1)
+    ZEND_ARG_INFO(0, cdict)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_free_ddict, 0, 0, 1)
+    ZEND_ARG_INFO(0, ddict)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_compress_using_cdict, 0, 0, 1)
+    ZEND_ARG_INFO(0, cctx)
+    ZEND_ARG_INFO(0, data)
+    ZEND_ARG_INFO(0, cdict)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_zstd_uncompress_using_ddict, 0, 0, 1)
+    ZEND_ARG_INFO(0, dctx)
+    ZEND_ARG_INFO(0, data)
+    ZEND_ARG_INFO(0, ddict)
+ZEND_END_ARG_INFO()
+
 ZEND_FUNCTION(zstd_compress)
 {
     zval *data;
@@ -297,6 +339,207 @@ ZEND_FUNCTION(zstd_compress_dict)
 
     efree(cBuff);
 }
+
+ZEND_FUNCTION(zstd_create_cctx)
+{
+    ZSTD_CCtx* const cctx = ZSTD_createCCtx();
+    if (cctx == NULL) {
+        zend_error(E_WARNING, "ZSTD_createCCtx() error");
+        RETURN_FALSE;
+    }
+    RETVAL_LONG((long)cctx);
+}
+
+ZEND_FUNCTION(zstd_create_dctx)
+{
+    ZSTD_DCtx* const dctx = ZSTD_createDCtx();
+    if (dctx == NULL) {
+        zend_error(E_WARNING, "ZSTD_createDCtx() error");
+        RETURN_FALSE;
+    }
+    RETVAL_LONG((long)dctx);
+}
+
+ZEND_FUNCTION(zstd_compress_using_cdict)
+{
+    zval *data;
+
+    ZSTD_CCtx  *cctx;
+    ZSTD_CDict *cdict;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "lzl", (long *)&cctx, &data, (long *)&cdict) == FAILURE) {
+        RETURN_FALSE;
+    }
+    if (Z_TYPE_P(data) != IS_STRING) {
+        zend_error(E_WARNING, "zstd_compress_using_dict:"
+                   " expects the first parameter to be string.");
+        RETURN_FALSE;
+    }
+    size_t const cBuffSize = ZSTD_compressBound(Z_STRLEN_P(data));
+    void* const cBuff = emalloc(cBuffSize);
+    if (!cBuff) {
+        zend_error(E_WARNING, "zstd_compress_using_dict: memory error");
+        RETURN_FALSE;
+    }
+    size_t const cSize = ZSTD_compress_usingCDict(cctx, cBuff, cBuffSize,
+                                                  Z_STRVAL_P(data),
+                                                  Z_STRLEN_P(data),
+                                                  cdict);
+    if (ZSTD_isError(cSize)) {
+        efree(cBuff);
+        zend_error(E_WARNING, "zstd_compress_using_dict: %s",
+                   ZSTD_getErrorName(cSize));
+        RETURN_FALSE;
+    }
+#if ZEND_MODULE_API_NO >= 20141001
+    RETVAL_STRINGL(cBuff, cSize);
+#else
+    RETVAL_STRINGL(cBuff, cSize, 1);
+#endif
+
+    efree(cBuff);
+}
+
+ZEND_FUNCTION(zstd_create_cdict)
+{
+    zval *dictBuffer;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "z", &dictBuffer) == FAILURE) {
+        RETURN_FALSE;
+    }
+    if (Z_TYPE_P(dictBuffer) != IS_STRING) {
+        zend_error(E_WARNING, "zstd_create_cdict:"
+                   " expects the first parameter to be string.");
+        RETURN_FALSE;
+    }
+    ZSTD_CDict* const cdict = ZSTD_createCDict(Z_STRVAL_P(dictBuffer),
+                                               Z_STRLEN_P(dictBuffer),
+                                               DEFAULT_COMPRESS_LEVEL);
+    if (!cdict) {
+        zend_error(E_WARNING, "ZSTD_create_cdict() error");
+        RETURN_FALSE;
+    }
+    RETVAL_LONG((long)cdict);
+}
+
+ZEND_FUNCTION(zstd_create_ddict)
+{
+    zval *dictBuffer;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "z", &dictBuffer) == FAILURE) {
+        RETURN_FALSE;
+    }
+    if (Z_TYPE_P(dictBuffer) != IS_STRING) {
+        zend_error(E_WARNING, "zstd_create_ddict:"
+                   " expects the first parameter to be string.");
+        RETURN_FALSE;
+    }
+    ZSTD_DDict *ddict = ZSTD_createDDict(Z_STRVAL_P(dictBuffer),
+                                         Z_STRLEN_P(dictBuffer));
+    if (!ddict) {
+        zend_error(E_WARNING, "ZSTD_create_ddict() error");
+        RETURN_FALSE;
+    }
+    RETVAL_LONG((long)ddict);
+}
+
+ZEND_FUNCTION(zstd_free_cctx)
+{
+    ZSTD_CCtx *cctx;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "l", (long *)&cctx) == FAILURE) {
+        RETURN_FALSE;
+    }
+    ZSTD_freeCCtx(cctx);
+
+    RETURN_TRUE;
+}
+
+ZEND_FUNCTION(zstd_free_dctx)
+{
+    ZSTD_DCtx *dctx;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "l", (long *)&dctx) == FAILURE) {
+        RETURN_FALSE;
+    }
+    ZSTD_freeDCtx(dctx);
+
+    RETURN_TRUE;
+}
+
+ZEND_FUNCTION(zstd_free_cdict)
+{
+    ZSTD_CDict *cdict;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "l", (long *)&cdict) == FAILURE) {
+        RETURN_FALSE;
+    }
+    ZSTD_freeCDict(cdict);
+
+    RETURN_TRUE;
+}
+
+ZEND_FUNCTION(zstd_free_ddict)
+{
+    ZSTD_DDict *ddict;
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "l", (long *)&ddict) == FAILURE) {
+        RETURN_FALSE;
+    }
+    ZSTD_freeDDict(ddict);
+
+    RETURN_TRUE;
+}
+
+ZEND_FUNCTION(zstd_uncompress_using_ddict)
+{
+    zval *data;
+    ZSTD_DDict *ddict;
+    ZSTD_DCtx  *dctx;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "lzl", (long *)&dctx, &data, (long *)&ddict) == FAILURE) {
+        RETURN_FALSE;
+    }
+    if (Z_TYPE_P(data) != IS_STRING) {
+        zend_error(E_WARNING, "zstd_uncompress_using_ddict:"
+                   " expects the first parameter to be string.");
+        RETURN_FALSE;
+    }
+
+    unsigned long long const rSize = ZSTD_getDecompressedSize(Z_STRVAL_P(data),
+                                                              Z_STRLEN_P(data));
+    if (rSize == 0) {
+        RETURN_FALSE;
+    }
+    void* const rBuff = emalloc((size_t)rSize);
+    if (!rBuff) {
+        zend_error(E_WARNING, "zstd_uncompress_using_ddict: memory error");
+        RETURN_FALSE;
+    }
+
+    size_t const dSize = ZSTD_decompress_usingDDict(dctx, rBuff, rSize,
+                                                    Z_STRVAL_P(data),
+                                                    Z_STRLEN_P(data),
+                                                    ddict);
+    if (dSize != rSize) {
+        efree(rBuff);
+        zend_error(E_WARNING, "zstd_uncompress_dict: %s",
+                   ZSTD_getErrorName(dSize));
+        RETURN_FALSE;
+    }
+
+#if ZEND_MODULE_API_NO >= 20141001
+    RETVAL_STRINGL(rBuff, rSize);
+#else
+    RETVAL_STRINGL(rBuff, rSize, 1);
+#endif
+
+    efree(rBuff);
+}
+
 
 ZEND_FUNCTION(zstd_uncompress_dict)
 {
@@ -826,6 +1069,18 @@ static zend_function_entry zstd_functions[] = {
     ZEND_FE(zstd_compress, arginfo_zstd_compress)
     ZEND_FE(zstd_uncompress, arginfo_zstd_uncompress)
     ZEND_FALIAS(zstd_decompress, zstd_uncompress, arginfo_zstd_uncompress)
+
+    ZEND_FE(zstd_create_cctx, arginfo_zstd_create_cctx)
+    ZEND_FE(zstd_create_dctx, arginfo_zstd_create_dctx)
+    ZEND_FE(zstd_free_cctx, arginfo_zstd_free_cctx)
+    ZEND_FE(zstd_free_dctx, arginfo_zstd_free_dctx)
+
+    ZEND_FE(zstd_create_cdict, arginfo_zstd_create_cdict)
+    ZEND_FE(zstd_create_ddict, arginfo_zstd_create_ddict)
+    ZEND_FE(zstd_free_cdict, arginfo_zstd_free_cdict)
+    ZEND_FE(zstd_free_ddict, arginfo_zstd_free_ddict)
+    ZEND_FE(zstd_uncompress_using_ddict, arginfo_zstd_uncompress_using_ddict)
+    ZEND_FE(zstd_compress_using_cdict, arginfo_zstd_compress_using_cdict)
 
     ZEND_FE(zstd_compress_dict, arginfo_zstd_compress_dict)
     ZEND_FE(zstd_uncompress_dict, arginfo_zstd_uncompress_dict)
