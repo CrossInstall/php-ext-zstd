@@ -10,7 +10,7 @@ Documentation for Zstandard can be found at [» https://github.com/facebook/zstd
 ## Build from sources
 
 ``` bash
-% git clone --recursive --depth=1 https://github.com/kjdev/php-ext-zstd.git
+% git clone --recursive --depth=1 https://github.com/CrossInstall/php-ext-zstd.git
 % phpize
 % ./configure
 % make
